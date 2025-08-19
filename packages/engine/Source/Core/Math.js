@@ -340,6 +340,14 @@ CesiumMath.lerp = function (p, q, time) {
 };
 
 /**
+ * half pi
+ *
+ * @type {number}
+ * @constant
+ */
+CesiumMath.HalfPI = 0.5 * Math.PI;
+
+/**
  * pi
  *
  * @type {number}

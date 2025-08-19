@@ -67,6 +67,12 @@ import SampledPositionProperty from "./SampledPositionProperty.js";
 import ScaledPositionProperty from "./ScaledPositionProperty.js";
 import TimeIntervalCollectionProperty from "./TimeIntervalCollectionProperty.js";
 import WallGraphics from "./WallGraphics.js";
+import CallbackProperty from "./CallbackProperty.js";
+//import SceneTransforms from "../Scene/SceneTransforms.js";
+import Transforms from "../Core/Transforms.js";
+import Matrix4 from "../Core/Matrix4.js";
+//import Quaternion from "../Core/Quaternion.js";
+//import VerticalOrigin from "../Scene/VerticalOrigin.js";
 
 //This is by no means an exhaustive list of MIME types.
 //The purpose of this list is to be able to accurately identify content embedded
@@ -1785,11 +1791,21 @@ function processTrack(
   const canExtrude = isExtrudable(altitudeMode, gxAltitudeMode);
   const ellipsoid = dataSource._ellipsoid;
 
+  const msaAngles = [];
+
   if (angleNodes.length > 0) {
+    /* We now support GX:Angles
     oneTimeWarning(
       "kml-gx:angles",
       "KML - gx:angles are not supported in gx:Tracks",
     );
+     */
+
+    for (const gxAngle of angleNodes) {
+      const innerAngle = gxAngle.innerHTML;
+      const tokens = innerAngle.split(" ");
+      msaAngles.push(Number(tokens[0]));
+    }
   }
 
   const length = Math.min(coordNodes.length, timeNodes.length);
@@ -1820,6 +1836,108 @@ function processTrack(
         stop: times[times.length - 1],
       }),
     );
+
+    if (timeNodes.length === msaAngles.length) {
+      if (defined(entity.billboard)) {
+        entity.billboard.alignedAxis = Cartesian3.UNIT_Z;
+        entity.billboard._msaTimes = times;
+        entity.billboard._msaAngles = msaAngles;
+        entity.billboard.rotation = new CallbackProperty(function (
+          time,
+          result,
+        ) {
+          const currentTime = JulianDate.now();
+          if (entity.lastCall !== undefined && currentTime < entity.lastCall) {
+            return entity.lastResult;
+          }
+          entity.lastCall = JulianDate.addSeconds(
+            currentTime,
+            0.05,
+            new JulianDate(),
+          ); //20 frames per second (performance)
+
+          // Calculate rotation based on camera heading
+          const currentCamera = entity.entityCollection._owner.camera;
+          const currentScene = currentCamera._scene;
+
+          let headingInRadians = 0;
+          let headingInDegrees = 0;
+          let idx = -1;
+          for (const msaTime of entity.billboard._msaTimes) {
+            idx++;
+            if (msaTime > time) {
+              headingInDegrees = entity.billboard._msaAngles[idx];
+
+              if (headingInDegrees === 0) {
+                return 0.0;
+              }
+              headingInRadians = CesiumMath.toRadians(headingInDegrees);
+              break;
+            }
+          }
+
+          try {
+            const currentPosition = entity.position.getValue(time);
+            entity.billboard.alignedAxis = Cartesian3.ZERO;
+
+            const rot = rotationForHeadingOnScreen(
+              currentPosition,
+              headingInRadians,
+              currentScene,
+            );
+            if (rot !== undefined) {
+              // (East-Up orientation) If artwork's "up" isn't forward(east), add a constant offset here.
+              //our icons are north UP : add -90 degrees to return it to 'northUp'
+              //entity.billboard.rotation = rot + CesiumMath.HalfPI;
+
+              entity.lastResult = rot - CesiumMath.HalfPI;
+            } else {
+              // Compute the alignedAxis for that heading relative to ENU (north up)
+              const enuTransform =
+                Transforms.eastNorthUpToFixedFrame(currentPosition);
+              // Transform the ENU direction into world coordinates
+              const directionWorld = Matrix4.getColumn(
+                enuTransform,
+                2,
+                new Cartesian3(),
+              );
+              // Normalize the direction vector
+              Cartesian3.normalize(directionWorld, directionWorld);
+
+              // Aligned axis determines what direction the billboard 'up' points to in world space
+              entity.alignedAxis = directionWorld;
+              entity.billboard.alignedAxis = directionWorld;
+
+              //no need to compensate for artworks 'up' position.  (Our icons are north up)
+              entity.lastResult = -headingInRadians;
+
+              if (currentCamera.heading === undefined) {
+                entity.lastResult = -headingInRadians;
+              } else {
+                //Get proper offset to account for north when the camera is not at 0 degrees
+                const cameraHeadingInDegrees = CesiumMath.toDegrees(
+                  currentCamera.heading,
+                );
+                let offsetDeg = 0;
+                if (cameraHeadingInDegrees > 180) {
+                  offsetDeg = -(360 - cameraHeadingInDegrees);
+                } else {
+                  offsetDeg = cameraHeadingInDegrees;
+                }
+                const offsetRadians = CesiumMath.toRadians(offsetDeg);
+                entity.lastResult = -(headingInRadians - offsetRadians);
+              }
+            }
+
+            return entity.lastResult;
+          } catch (err) {
+            //console.log(`${err}`);
+          }
+
+          return 0;
+        }, false);
+      }
+    }
   }
 
   if (canExtrude && extrude) {
@@ -1827,6 +1945,50 @@ function processTrack(
   }
 
   return true;
+}
+
+// heading: CW-from-north (radians) in the local tangent plane at `position`
+function rotationForHeadingOnScreen(position, heading, scene) {
+  // Local ENU basis at the billboard position
+  const enu = Transforms.eastNorthUpToFixedFrame(position);
+  const east = Matrix4.getColumn(enu, 0, new Cartesian3());
+  const north = Matrix4.getColumn(enu, 1, new Cartesian3());
+
+  // Forward in world coords for this heading: sin(east) + cos(north)
+  const forwardWorld = Cartesian3.normalize(
+    Cartesian3.add(
+      Cartesian3.multiplyByScalar(east, Math.sin(heading), new Cartesian3()),
+      Cartesian3.multiplyByScalar(north, Math.cos(heading), new Cartesian3()),
+      new Cartesian3(),
+    ),
+    new Cartesian3(),
+  );
+
+  // Pick a step length that gives a few pixels on screen at current range
+  const camPos = scene.camera.positionWC;
+  const dist = Cartesian3.distance(position, camPos);
+  const step = CesiumMath.clamp(dist * 0.001, 1.0, 1000.0); // ~0.1% of range, 1–1000 m
+
+  const p1 = position;
+  const p2 = Cartesian3.add(
+    p1,
+    Cartesian3.multiplyByScalar(forwardWorld, step, new Cartesian3()),
+    new Cartesian3(),
+  );
+
+  const s1 = scene.cartesianToCanvasCoordinates(p1, new Cartesian2());
+  const s2 = scene.cartesianToCanvasCoordinates(p2, new Cartesian2());
+  if (!defined(s1) || !defined(s2)) {
+    return undefined;
+  } // behind camera, etc.
+
+  // Screen y is down; billboard.rotation is CCW from screen-up
+  const dx = s2.x - s1.x;
+  const dy = s2.y - s1.y;
+
+  const angleCCWFromUp = CesiumMath.fastApproximateAtan2(dx, -dy);
+  //const angleCCWFromUp = Math.atan2(dx, -dy);
+  return angleCCWFromUp; // <- feed directly to billboard.rotation
 }
 
 function addToMultiTrack(
