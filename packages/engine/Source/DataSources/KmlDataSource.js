@@ -1838,8 +1838,15 @@ function processTrack(
     );
 
     if (timeNodes.length === msaAngles.length) {
-      if (defined(entity.billboard)) {
-        entity.billboard.alignedAxis = Cartesian3.UNIT_Z;
+      let hasAngles = false;
+      for (const angle of msaAngles) {
+        if (angle !== 0) {
+          hasAngles = true;
+          break;
+        }
+      }
+
+      if (hasAngles && defined(entity.billboard)) {
         entity.billboard._msaTimes = times;
         entity.billboard._msaAngles = msaAngles;
         entity.billboard.rotation = new CallbackProperty(function (
