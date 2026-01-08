@@ -3403,13 +3403,21 @@ function loadKml(
       ? documentElement
       : queryFirstNode(documentElement, "Document", namespaces.kml);
   let name = queryStringValue(document, "name", namespaces.kml);
+  const sourceFileName = getFilenameFromUri(sourceResource.getUrlComponent());
+  const documentDescription = queryStringValue(
+    document,
+    "description",
+    namespaces.kml,
+  );
   if (!defined(name)) {
-    name = getFilenameFromUri(sourceResource.getUrlComponent());
+    name = sourceFileName;
   }
 
   // Only set the name from the root document
   if (!defined(dataSource._name)) {
     dataSource._name = name;
+    dataSource._sourceFileName = sourceFileName;
+    dataSource._sourceDescription = documentDescription;
   }
 
   const deferredLoading = new KmlDataSource._DeferredLoading(dataSource);
