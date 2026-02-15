@@ -2039,7 +2039,7 @@ BillboardCollection.prototype.update = function (frameState) {
     ) {
       this._rsOpaque = RenderState.fromCache({
         depthTest: {
-          enabled: false,
+          enabled: this.disableDepthTestDistance !== Number.POSITIVE_INFINITY,
         },
         depthMask: true,
       });
@@ -2059,7 +2059,7 @@ BillboardCollection.prototype.update = function (frameState) {
     ) {
       this._rsTranslucent = RenderState.fromCache({
         depthTest: {
-          enabled: false,
+          enabled: this.disableDepthTestDistance !== Number.POSITIVE_INFINITY,
         },
         depthMask: useTranslucentDepthMask,
         blending: BlendingState.ALPHA_BLEND,
