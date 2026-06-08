@@ -461,8 +461,18 @@ ModelVisualizer.prototype.getBoundingSphere = function (entity, result) {
   }
 
   const model = modelData.modelPrimitive;
-  if (!defined(model) || !model.show) {
+  if (!defined(model)) {
     return BoundingSphereState.PENDING;
+  }
+
+  // Intentionally hidden via model.show=false: this visualizer has no contribution
+  // to the entity's bounding sphere. Return FAILED so DataSourceDisplay.getBoundingSphere
+  // can fall back to other visualizers (e.g. BillboardVisualizer). Returning PENDING here
+  // would block trackedEntity setup forever for dual-graphics (billboard + hidden model)
+  // entities, since CesiumWidget.updateTrackedEntity calls with allowPartial=false and
+  // short-circuits on the first PENDING.
+  if (!model.show) {
+    return BoundingSphereState.FAILED;
   }
 
   if (!model.ready || !modelData.modelUpdated) {
