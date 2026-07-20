@@ -1228,6 +1228,17 @@ Object.defineProperties(Scene.prototype, {
   },
 
   /**
+   * @memberof Scene.prototype
+   * @type {VectorProvider}
+   * @ignore
+   */
+  vectorProvider: {
+    get: function () {
+      return this.globe?.vectorProvider;
+    },
+  },
+
+  /**
    * Gets the event that will be raised before the scene is updated or rendered.  Subscribers to the event
    * receive the Scene instance as the first parameter and the current time as the second parameter.
    * @memberof Scene.prototype
@@ -2466,6 +2477,7 @@ function createWorkingFrustum(camera) {
  *
  * @param {Scene} scene The scene.
  * @returns {Function} A function to execute translucent commands.
+ * @ignore
  */
 function obtainTranslucentCommandExecutionFunction(scene) {
   if (scene._environmentState.useOIT) {
@@ -2616,6 +2628,29 @@ function performCesium3DTileEdgesPass(scene, passState, frustumCommands) {
   }
 
   passState.framebuffer = originalFramebuffer;
+}
+
+/**
+ * Execute edge commands that should render directly to the main framebuffer
+ * (EDGES_ONLY mode). These edges bypass the MRT edge framebuffer and render
+ * on top of surface geometry.
+ *
+ * @param {Scene} scene
+ * @param {PassState} passState
+ * @param {FrustumCommands} frustumCommands
+ *
+ * @private
+ */
+function performCesium3DTileEdgesDirectPass(scene, passState, frustumCommands) {
+  scene.context.uniformState.updatePass(Pass.CESIUM_3D_TILE_EDGES_DIRECT);
+
+  const commands = frustumCommands.commands[Pass.CESIUM_3D_TILE_EDGES_DIRECT];
+  const commandCount =
+    frustumCommands.indices[Pass.CESIUM_3D_TILE_EDGES_DIRECT];
+
+  for (let j = 0; j < commandCount; ++j) {
+    executeCommand(commands[j], scene, passState);
+  }
 }
 
 /**
@@ -2865,7 +2900,7 @@ function executeCommands(scene, passState) {
       passState.framebuffer = scene._invertClassification._fbo.framebuffer;
 
       // Draw normally
-      commandCount = performPass(frustumCommands, Pass.CESIUM_3D_TILE);
+      performPass(frustumCommands, Pass.CESIUM_3D_TILE);
 
       if (useGlobeDepthFramebuffer) {
         scene._invertClassification.prepareTextures(context);
@@ -2910,6 +2945,9 @@ function executeCommands(scene, passState) {
     performVoxelsPass(scene, passState, frustumCommands);
 
     performPass(frustumCommands, Pass.OPAQUE);
+
+    // Draw direct edges (EDGES_ONLY mode) after opaque surfaces
+    performCesium3DTileEdgesDirectPass(scene, passState, frustumCommands);
 
     performGaussianSplatPass(scene, passState, frustumCommands);
 
@@ -3021,6 +3059,18 @@ function renderEnvironment(scene, passState) {
   // Moon can be seen through the atmosphere, since the sun is rendered after the atmosphere.
   if (environmentState.isMoonVisible) {
     environmentState.moonCommand.execute(context, passState);
+  }
+
+  // execute panorama commands, drop removed primitives
+  const panoramaCommandList = scene.frameState.panoramaCommandList;
+  for (let i = panoramaCommandList.length - 1; i >= 0; i--) {
+    const panoramaCommand = panoramaCommandList[i];
+    if (defined(panoramaCommand.shaderProgram)) {
+      executeCommand(panoramaCommandList[i], scene, passState);
+    } else {
+      //primitive was removed
+      panoramaCommandList.splice(i, 1);
+    }
   }
 }
 
@@ -3597,10 +3647,11 @@ Scene.prototype.updateEnvironment = function () {
   );
 
   const envMaps = this.specularEnvironmentMaps;
-  let specularEnvironmentCubeMap = this._specularEnvironmentCubeMap;
+  const specularEnvironmentCubeMap = this._specularEnvironmentCubeMap;
   if (defined(envMaps) && specularEnvironmentCubeMap?.url !== envMaps) {
-    specularEnvironmentCubeMap =
-      specularEnvironmentCubeMap && specularEnvironmentCubeMap.destroy();
+    if (defined(specularEnvironmentCubeMap)) {
+      specularEnvironmentCubeMap.destroy();
+    }
     this._specularEnvironmentCubeMap = new SpecularEnvironmentCubeMap(envMaps);
   } else if (!defined(envMaps) && defined(specularEnvironmentCubeMap)) {
     specularEnvironmentCubeMap.destroy();
@@ -3932,14 +3983,15 @@ function callAfterRenderFunctions(scene) {
   // Functions are queued up during primitive update and executed here in case
   // the function modifies scene state that should remain constant over the frame.
   const functions = scene._frameState.afterRender;
-  for (let i = 0; i < functions.length; ++i) {
-    const shouldRequestRender = functions[i]();
+  const functionsCpy = functions.slice(); // Snapshot before iterate allows callbacks to add functions for next frame
+  functions.length = 0;
+
+  for (let i = 0; i < functionsCpy.length; ++i) {
+    const shouldRequestRender = functionsCpy[i]();
     if (shouldRequestRender) {
       scene.requestRender();
     }
   }
-
-  functions.length = 0;
 }
 
 function getGlobeHeight(scene) {
@@ -4517,6 +4569,37 @@ Scene.prototype.pick = function (windowPosition, width, height) {
   return this._picking.pick(this, windowPosition, width, height, 1)[0];
 };
 
+/**
+ * Performs the same operation as Scene.pick but asynchonosly without blocking the main render thread.
+ * Requires WebGL2 else using fallback.
+ *
+ * @example
+ * // On mouse over, color the feature yellow.
+ * handler.setInputAction(function(movement) {
+ *     const feature = scene.pickAsync(movement.endPosition).then(function(feature) {
+ *        if (feature instanceof Cesium.Cesium3DTileFeature) {
+ *            feature.color = Cesium.Color.YELLOW;
+ *        }
+ *     });
+ * }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
+ *
+ * @param {Cartesian2} windowPosition Window coordinates to perform picking on.
+ * @param {number} [width=3] Width of the pick rectangle.
+ * @param {number} [height=3] Height of the pick rectangle.
+ * @returns {Promise<Object | undefined>} Object containing the picked primitive or <code>undefined</code> if nothing is at the location.
+ *
+ * @see Scene#pick
+ */
+Scene.prototype.pickAsync = async function (windowPosition, width, height) {
+  const result = await this._picking.pickAsync(
+    this,
+    windowPosition,
+    width,
+    height,
+    1,
+  );
+  return result[0];
+};
 /**
  * Returns a {@link VoxelCell} for the voxel sample rendered at a particular window coordinate,
  * or <code>undefined</code> if no voxel is rendered at that position.

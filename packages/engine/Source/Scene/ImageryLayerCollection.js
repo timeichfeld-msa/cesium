@@ -13,8 +13,8 @@ import ImageryLayer from "./ImageryLayer.js";
  * @constructor
  * @see {@link Scene#imageryLayers} for manipulating imagery layers on the globe.
  * @see {@link Cesium3DTileset#imageryLayers} for manipulating imagery layers on a 3D tileset.
- * @demo {@link https://sandcastle.cesium.com/index.html?src=Imagery%20Adjustment.html|Cesium Sandcastle Imagery Adjustment Demo}
- * @demo {@link https://sandcastle.cesium.com/index.html?src=Imagery%20Layers%20Manipulation.html|Cesium Sandcastle Imagery Manipulation Demo}
+ * @demo {@link https://sandcastle.cesium.com/index.html?id=imagery-adjustment|Cesium Sandcastle Imagery Adjustment Demo}
+ * @demo {@link https://sandcastle.cesium.com/index.html?id=imagery-layers-manipulation|Cesium Sandcastle Imagery Manipulation Demo}
  */
 function ImageryLayerCollection() {
   this._layers = [];
@@ -545,7 +545,7 @@ ImageryLayerCollection.prototype.pickImageryLayerFeatures = function (
 /**
  * Updates frame state to execute any queued texture re-projections.
  *
- * @private
+ * @ignore
  *
  * @param {FrameState} frameState The frameState.
  */
@@ -561,7 +561,7 @@ ImageryLayerCollection.prototype.queueReprojectionCommands = function (
 /**
  * Cancels re-projection commands queued for the next frame.
  *
- * @private
+ * @ignore
  */
 ImageryLayerCollection.prototype.cancelReprojections = function () {
   const layers = this._layers;

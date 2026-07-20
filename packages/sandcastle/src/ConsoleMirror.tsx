@@ -1,12 +1,18 @@
 import classNames from "classnames";
 import "./ConsoleMirror.css";
-import { useLayoutEffect, useRef } from "react";
+import { useLayoutEffect, useRef, type ReactNode } from "react";
 import useStayScrolled from "react-stay-scrolled";
-import { Badge } from "@stratakit/bricks";
-import { caretDown, caretUp, statusError, statusWarning } from "./icons";
+import { Badge, Button } from "@stratakit/bricks";
+import {
+  caretDown,
+  caretUp,
+  deleteIcon,
+  statusError,
+  statusWarning,
+} from "./icons";
 import { Icon } from "@stratakit/foundations";
 
-export type ConsoleMessageType = "log" | "warn" | "error";
+export type ConsoleMessageType = "log" | "warn" | "error" | "special";
 export type ConsoleMessage = {
   type: ConsoleMessageType;
   message: string;
@@ -27,10 +33,14 @@ export function ConsoleMirror({
   logs,
   expanded: consoleExpanded,
   toggleExpanded,
+  resetConsole,
+  renderLogAction,
 }: {
   logs: ConsoleMessage[];
   expanded: boolean;
   toggleExpanded: () => void;
+  resetConsole: (options?: { showMessage?: boolean }) => void;
+  renderLogAction?: (log: ConsoleMessage, index: number) => ReactNode;
 }) {
   const logsRef = useRef<HTMLDivElement>(document.createElement("div"));
   // TODO: determine if we need this lib or can implement ourselves. It's a little outdated
@@ -64,6 +74,19 @@ export function ConsoleMirror({
         {errors.length > 0 && (
           <Badge label={errors.length} tone="critical" variant="muted" />
         )}
+        <div className="spacer"></div>
+        <Button
+          className="clear-button"
+          variant="ghost"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            resetConsole({ showMessage: true });
+          }}
+        >
+          <Icon href={deleteIcon} />
+          Clear console
+        </Button>
       </div>
       <div className="logs" ref={logsRef}>
         {logs.length === 0 && (
@@ -72,21 +95,23 @@ export function ConsoleMirror({
             <pre>Any console messages will be mirrored here</pre>
           </div>
         )}
-        {logs.map((log, i) => {
-          return (
-            <div
-              key={i}
-              className={classNames("message", {
-                warning: log.type === "warn",
-                error: log.type === "error",
-              })}
-            >
-              <ConsoleIcon type={log.type} />
-              <span className="message-index">{i + 1}:</span>
-              <pre className="content">{log.message}</pre>
-            </div>
-          );
-        })}
+        {logs.map((log, i) => (
+          <div
+            key={log.id}
+            className={classNames("message", {
+              warning: log.type === "warn",
+              error: log.type === "error",
+              special: log.type === "special",
+            })}
+          >
+            <ConsoleIcon type={log.type} />
+            <span className="message-index">{i + 1}:</span>
+            <pre className="content">{log.message}</pre>
+            {renderLogAction && (
+              <div className="log-action-slot">{renderLogAction(log, i)}</div>
+            )}
+          </div>
+        ))}
       </div>
     </div>
   );

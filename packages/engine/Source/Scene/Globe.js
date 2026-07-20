@@ -28,6 +28,7 @@ import QuadtreePrimitive from "./QuadtreePrimitive.js";
 import SceneMode from "./SceneMode.js";
 import ShadowMode from "./ShadowMode.js";
 import CesiumMath from "../Core/Math.js";
+import VectorProvider from "../Core/VectorProvider.js";
 
 /**
  * The globe rendered in the scene, including its terrain ({@link Globe#terrainProvider})
@@ -45,6 +46,9 @@ function Globe(ellipsoid) {
     ellipsoid: ellipsoid,
   });
   const imageryLayerCollection = new ImageryLayerCollection();
+  const vectorProvider = new VectorProvider({
+    tilingScheme: terrainProvider.tilingScheme,
+  });
 
   this._ellipsoid = ellipsoid;
   this._imageryLayerCollection = imageryLayerCollection;
@@ -57,11 +61,14 @@ function Globe(ellipsoid) {
       terrainProvider: terrainProvider,
       imageryLayers: imageryLayerCollection,
       surfaceShaderSet: this._surfaceShaderSet,
+      vectorProvider,
     }),
   });
 
   this._terrainProvider = terrainProvider;
   this._terrainProviderChanged = new Event();
+
+  this._vectorProvider = vectorProvider;
 
   this._undergroundColor = Color.clone(Color.BLACK);
   this._undergroundColorAlphaByDistance = new NearFarScalar(
@@ -515,6 +522,9 @@ Object.defineProperties(Globe.prototype, {
     set: function (value) {
       if (value !== this._terrainProvider) {
         this._terrainProvider = value;
+        if (defined(value)) {
+          this._vectorProvider.tilingScheme = value.tilingScheme;
+        }
         this._terrainProviderChanged.raiseEvent(value);
         if (defined(this._material)) {
           makeShadersDirty(this);
@@ -532,6 +542,16 @@ Object.defineProperties(Globe.prototype, {
   terrainProviderChanged: {
     get: function () {
       return this._terrainProviderChanged;
+    },
+  },
+  /**
+   * @memberof Globe.prototype
+   * @type {VectorProvider}
+   * @ignore
+   */
+  vectorProvider: {
+    get: function () {
+      return this._vectorProvider;
     },
   },
   /**
@@ -723,14 +743,7 @@ Globe.prototype.pickWorldCoordinates = function (
   const sphereIntersections = scratchArray;
   sphereIntersections.length = 0;
 
-  const tilesToRender = this._surface._tilesToRender;
-  let length = tilesToRender.length;
-
-  let tile;
-  let i;
-
-  for (i = 0; i < length; ++i) {
-    tile = tilesToRender[i];
+  for (const tile of this._surface._tilesRenderedThisFrame) {
     const surfaceTile = tile.data;
 
     if (!defined(surfaceTile)) {
@@ -776,8 +789,8 @@ Globe.prototype.pickWorldCoordinates = function (
   sphereIntersections.sort(createComparePickTileFunction(ray.origin));
 
   let intersection;
-  length = sphereIntersections.length;
-  for (i = 0; i < length; ++i) {
+  const length = sphereIntersections.length;
+  for (let i = 0; i < length; ++i) {
     intersection = sphereIntersections[i].pick(
       ray,
       scene.mode,
@@ -943,7 +956,9 @@ Globe.prototype.getHeight = function (cartographic) {
 
   const intersection = tile.data.pick(
     ray,
-    undefined,
+    // Globe height is the same at a given cartographic regardless of the scene mode,
+    // but the ray is constructed via a surface normal (which assumes 3D), so pick in 3D mode.
+    SceneMode.SCENE3D,
     projection,
     false,
     scratchGetHeightIntersection,

@@ -77,6 +77,7 @@ function QuadtreePrimitive(options) {
   const tilingScheme = this._tileProvider.tilingScheme;
   const ellipsoid = tilingScheme.ellipsoid;
 
+  this._tilesRenderedThisFrame = new Set(); // collect all tiles selected to render (useful when multiple render calls are made in a single frame (as in 2D mode))
   this._tilesToRender = [];
   this._tileLoadQueueHigh = []; // high priority tiles are preventing refinement
   this._tileLoadQueueMedium = []; // medium priority tiles are being rendered
@@ -256,9 +257,9 @@ QuadtreePrimitive.prototype.forEachLoadedTile = function (tileFunction) {
  *        function is passed a reference to the tile as its only parameter.
  */
 QuadtreePrimitive.prototype.forEachRenderedTile = function (tileFunction) {
-  const tilesRendered = this._tilesToRender;
-  for (let i = 0, len = tilesRendered.length; i < len; ++i) {
-    tileFunction(tilesRendered[i]);
+  const tilesRendered = this._tilesRenderedThisFrame;
+  for (const tile of tilesRendered) {
+    tileFunction(tile);
   }
 };
 
@@ -347,6 +348,7 @@ QuadtreePrimitive.prototype.beginFrame = function (frameState) {
   }
 
   this._tileReplacementQueue.markStartOfRenderFrame();
+  this._tilesRenderedThisFrame.clear();
 };
 
 /**
@@ -1303,6 +1305,7 @@ function screenSpaceError2D(primitive, frameState, tile) {
 
 function addTileToRenderList(primitive, tile) {
   primitive._tilesToRender.push(tile);
+  primitive._tilesRenderedThisFrame.add(tile);
 }
 
 function processTileLoadQueue(primitive, frameState) {
@@ -1524,11 +1527,12 @@ function updateHeights(primitive, frameState) {
           );
 
           if (defined(position)) {
-            // Store the computed position in the cache for future reuse
+            // `pick` wrote into the module-level `scratchPosition`, so `position`
+            // aliases it — clone before caching or the next pick mutates every entry.
             tile.setPositionCacheEntry(
               data.positionCartographic,
               primitive.maximumScreenSpaceError,
-              position,
+              Cartesian3.clone(position),
             );
           }
         }

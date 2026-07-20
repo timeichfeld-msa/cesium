@@ -250,7 +250,7 @@ import WaterMaterial from "../Shaders/Materials/Water.js";
  * @exception {DeveloperError} strict: shader source does not use material.
  *
  * @see {@link https://github.com/CesiumGS/cesium/wiki/Fabric|Fabric wiki page} for a more detailed options of Fabric.
- * @demo {@link https://sandcastle.cesium.com/index.html?src=Materials.html|Cesium Sandcastle Materials Demo}
+ * @demo {@link https://sandcastle.cesium.com/index.html?id=materials|Cesium Sandcastle Materials Demo}
  *
  * @example
  * // Create a color material with fromType:
@@ -354,6 +354,7 @@ function Material(options) {
 
     /**
      * The {@link TextureMinificationFilter} to apply to this material's textures.
+     * @memberof Material.prototype
      * @type {TextureMinificationFilter}
      * @default TextureMinificationFilter.LINEAR
      */
@@ -368,6 +369,7 @@ function Material(options) {
 
     /**
      * The {@link TextureMagnificationFilter} to apply to this material's textures.
+     * @memberof Material.prototype
      * @type {TextureMagnificationFilter}
      * @default TextureMagnificationFilter.LINEAR
      */
@@ -1097,6 +1099,7 @@ function createCubeMapUpdateFunction(uniformId) {
  * @param {Material} material The material to load the cubemap images for.
  * @param {string} uniformId The ID of the uniform that corresponds to the cubemap images.
  * @returns A promise that resolves when the images are loaded, or a resolved promise if image loading is not necessary.
+ * @ignore
  */
 function loadCubeMapImagesForUniform(material, uniformId) {
   const uniforms = material.uniforms;

@@ -419,13 +419,13 @@ WallOutlineGeometry.createGeometry = function (wallGeometry) {
   }
 
   indices[edgeIndex++] = numVertices - 2;
-  indices[edgeIndex++] = numVertices - 1;
+  indices[edgeIndex] = numVertices - 1;
 
   return new Geometry({
     attributes: attributes,
     indices: indices,
     primitiveType: PrimitiveType.LINES,
-    boundingSphere: new BoundingSphere.fromVertices(positions),
+    boundingSphere: BoundingSphere.fromVertices(positions),
   });
 };
 export default WallOutlineGeometry;

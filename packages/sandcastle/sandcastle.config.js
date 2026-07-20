@@ -3,7 +3,7 @@ import process from "process";
 const config = {
   root: ".",
   sourceUrl: "https://github.com/CesiumGS/cesium/blob/main/packages/sandcastle",
-  publicDir: "./public",
+  publicDirectory: "./public",
   gallery: {
     files: ["gallery"],
     searchOptions: {
@@ -22,6 +22,7 @@ const config = {
       development: false,
     },
     includeDevelopment: !process.env.PROD,
+    generateEmbeddings: !process.env.SANDCASTLE_NO_EMBEDDINGS,
   },
 };
 

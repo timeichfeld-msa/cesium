@@ -264,13 +264,13 @@ function getPickShaderProgram(context, shaderProgram, pickId) {
 
   const hasFragData = sources.some((source) => source.includes("out_FragData"));
   const outputColorVariable = hasFragData ? "out_FragData_0" : "out_FragColor";
-  const newMain = `void main () 
-{ 
-    czm_non_pick_main(); 
-    if (${outputColorVariable}.a == 0.0) { 
-        discard; 
-    } 
-    ${outputColorVariable} = ${pickId}; 
+  const newMain = `void main ()
+{
+    czm_non_pick_main();
+    if (${outputColorVariable}.a == 0.0) {
+        discard;
+    }
+    ${outputColorVariable} = ${pickId};
 } `;
 
   const length = sources.length;
@@ -395,29 +395,6 @@ function getComponentCount(classProperty) {
 }
 
 /**
- * Returns the type that the given class property has in a GLSL shader.
- *
- * It returns the same string as `PropertyTextureProperty.prototype.getGlslType`
- * for a property texture property with the given class property
- *
- * @param {MetadataClassProperty} classProperty The class property
- * @returns {string} The GLSL shader type string for the property
- */
-function getGlslType(classProperty) {
-  const componentCount = getComponentCount(classProperty);
-  if (classProperty.normalized) {
-    if (componentCount === 1) {
-      return "float";
-    }
-    return `vec${componentCount}`;
-  }
-  if (componentCount === 1) {
-    return "int";
-  }
-  return `ivec${componentCount}`;
-}
-
-/**
  * Returns a shader statement that applies the inverse of the
  * value transform to the given value, based on the given offset
  * and scale.
@@ -426,6 +403,7 @@ function getGlslType(classProperty) {
  * @param {string} offset The offset
  * @param {string} scale The scale
  * @returns {string} The statement
+ * @ignore
  */
 function unapplyValueTransform(input, offset, scale) {
   return `((${input} - float(${offset})) / float(${scale}))`;
@@ -438,6 +416,7 @@ function unapplyValueTransform(input, offset, scale) {
  * @param {string} input The input value
  * @param {string} componentType The component type
  * @returns {string} The statement
+ * @ignore
  */
 function unnormalize(input, componentType) {
   const max = MetadataComponentType.getMaximum(componentType);
@@ -452,6 +431,7 @@ function unnormalize(input, componentType) {
  * @param {object} metadataProperty The metadata property, either
  * a `PropertyTextureProperty` or a `PropertyAttributeProperty`
  * @returns {string} The string
+ * @ignore
  */
 function getSourceValueStringScalar(classProperty, metadataProperty) {
   let result = `float(value)`;
@@ -480,6 +460,7 @@ function getSourceValueStringScalar(classProperty, metadataProperty) {
  * a `PropertyTextureProperty` or a `PropertyAttributeProperty`
  * @param {string} componentName The name, in ["x", "y", "z", "w"]
  * @returns {string} The string
+ * @ignore
  */
 function getSourceValueStringComponent(
   classProperty,
@@ -547,7 +528,7 @@ function getPickMetadataShaderProgram(
 
   const metadataProperty = pickedMetadataInfo.metadataProperty;
   const classProperty = pickedMetadataInfo.classProperty;
-  const glslType = getGlslType(classProperty);
+  const glslType = classProperty.getGlslType();
 
   // Define the components that will go into the output `metadataValues`.
   // This will be the 'color' that is written into the frame buffer,

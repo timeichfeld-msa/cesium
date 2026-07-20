@@ -1959,7 +1959,7 @@ function spin3D(controller, startPosition, movement) {
       scratchMousePosition,
     );
     if (defined(mousePos)) {
-      let strafing = false;
+      let strafing;
       const ray = camera.getPickRay(
         movement.startPosition,
         pickGlobeScratchRay,
@@ -2360,6 +2360,18 @@ function zoom3D(controller, startPosition, movement) {
   let distance;
   if (defined(intersection)) {
     distance = Cartesian3.distance(ray.origin, intersection);
+  }
+
+  // In tracking/lookAt mode (_globe is undefined), pickPosition can hit terrain
+  // behind the intended target. Ignore farther picks to prevent zoom snap.
+  if (!defined(controller._globe) && defined(distance)) {
+    const targetDistance = camera.getMagnitude();
+    if (targetDistance < distance) {
+      distance = undefined;
+    }
+  }
+
+  if (defined(distance)) {
     preIntersectionDistance = distance;
   }
 

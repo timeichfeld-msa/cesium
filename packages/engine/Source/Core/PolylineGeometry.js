@@ -83,7 +83,7 @@ function interpolateColors(p0, p1, color0, color1, numPoints) {
  *
  * @see PolylineGeometry#createGeometry
  *
- * @demo {@link https://sandcastle.cesium.com/index.html?src=Polyline.html|Cesium Sandcastle Polyline Demo}
+ * @demo {@link https://sandcastle.cesium.com/index.html?id=polyline|Cesium Sandcastle Polyline Demo}
  *
  * @example
  * // A polyline with two connected line segments
@@ -316,7 +316,7 @@ PolylineGeometry.createGeometry = function (polylineGeometry) {
     let removedArrayIndex = 0;
     let nextRemovedIndex = removedIndices[0];
     colors = colors.filter(function (color, index) {
-      let remove = false;
+      let remove;
       if (colorsPerVertex) {
         remove =
           index === nextRemovedIndex || (index === 0 && nextRemovedIndex === 1);
