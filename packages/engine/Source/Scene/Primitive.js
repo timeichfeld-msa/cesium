@@ -73,7 +73,7 @@ import ShadowMode from "./ShadowMode.js";
  * @param {boolean} [options.interleave=false] When <code>true</code>, geometry vertex attributes are interleaved, which can slightly improve rendering performance but increases load time.
  * @param {boolean} [options.compressVertices=true] When <code>true</code>, the geometry vertices are compressed, which will save memory.
  * @param {boolean} [options.releaseGeometryInstances=true] When <code>true</code>, the primitive does not keep a reference to the input <code>geometryInstances</code> to save memory.
- * @param {boolean} [options.allowPicking=true] When <code>true</code>, each geometry instance will only be pickable with {@link Scene#pick}.  When <code>false</code>, GPU memory is saved.
+ * @param {boolean} [options.allowPicking=true] When <code>true</code>, each geometry instance will only be pickable with {@link Scene#pick}.  When <code>false</code>, GPU memory is saved AND the primitive is fully excluded from the pick pass -- it will not participate in {@link Scene#pick} at all, and pickable primitives (3D models, other primitives) behind it remain resolvable through the click point. Useful for translucent overlays that must not block picking of underlying content.
  * @param {boolean} [options.cull=true] When <code>true</code>, the renderer frustum culls and horizon culls the primitive's commands based on their bounding volume.  Set this to <code>false</code> for a small performance gain if you are manually culling the primitive.
  * @param {boolean} [options.asynchronous=true] Determines if the primitive will be created asynchronously or block until ready.
  * @param {boolean} [options.debugShowBoundingVolume=false] For debugging only. Determines if this primitive's commands' bounding spheres are shown.
@@ -404,7 +404,11 @@ Object.defineProperties(Primitive.prototype, {
   },
 
   /**
-   * When <code>true</code>, each geometry instance will only be pickable with {@link Scene#pick}.  When <code>false</code>, GPU memory is saved.         *
+   * When <code>true</code>, each geometry instance is pickable via {@link Scene#pick}.
+   * When <code>false</code>, GPU memory is saved AND the primitive is fully excluded from
+   * the pick pass -- it will not participate in {@link Scene#pick} at all, and pickable
+   * primitives (3D models, other primitives) behind it remain resolvable through the click
+   * point. Useful for translucent overlays that must not block picking of underlying content.
    *
    * @memberof Primitive.prototype
    *
@@ -2033,7 +2037,20 @@ function updateAndQueueCommands(
 
   const commandList = frameState.commandList;
   const passes = frameState.passes;
-  if (passes.render || passes.pick) {
+  // SDi fork patch (2026-07-20): tighten allowPicking:false semantics so the
+  // primitive is fully excluded from the pick pass. Cesium's default behavior
+  // pushed the command regardless, then relied on pickId=undefined to skip
+  // the pick-id write -- but the fall-through in Scene.executeCommand still
+  // dispatched the original color command into the pick framebuffer, which
+  // wrote alpha-blended color garbage that clobbered pick colors of models
+  // behind the primitive (translucent overlays like ODX position-estimate
+  // ellipse batches). Restricting the command-list push to `allowPicking:true`
+  // for the pick pass makes 3D models under a translucent, non-pickable
+  // batched primitive pickable again. See:
+  //   docs/Plans/Cesium/CesiumFork_ExcludeFromPickDepth_Plan.md (GRAMS-Cloud)
+  //   Geospatial/Components/OdxArchive/OdxArchiveControl.razor.js
+  //     -> createPosestEllipses (already sets allowPicking:false; now honored)
+  if (passes.render || (passes.pick && primitive.allowPicking)) {
     const allowPicking = primitive.allowPicking;
     const castShadows = ShadowMode.castShadows(primitive.shadows);
     const receiveShadows = ShadowMode.receiveShadows(primitive.shadows);
