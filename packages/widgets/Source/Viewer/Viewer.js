@@ -290,6 +290,7 @@ function enableVRUI(viewer, enabled) {
  * @property {boolean} [infoBox=true] If set to false, the InfoBox widget will not be created.
  * @property {boolean} [sceneModePicker=true] If set to false, the SceneModePicker widget will not be created.
  * @property {boolean} [selectionIndicator=true] If set to false, the SelectionIndicator widget will not be created.
+ * @property {("brackets"|"glow")} [selectionIndicatorStyle="brackets"] SDi fork addition. Visual style for the SelectionIndicator. "brackets" (default) is Cesium's animated green L-corner brackets. "glow" is a soft radial-gradient ring sized to the selected entity's bounding sphere -- consumers can retint via the <code>--cesium-selection-glow-color</code> CSS custom property. Per-entity opt-out via <code>entity.showSelectionIndicator = false</code> suppresses the indicator only (InfoBox remains visible).
  * @property {boolean} [timeline=true] If set to false, the Timeline widget will not be created.
  * @property {boolean} [navigationHelpButton=true] If set to false, the navigation help button will not be created.
  * @property {boolean} [navigationInstructionsInitiallyVisible=true] True if the navigation instructions should initially be visible, or false if the should not be shown until the user explicitly clicks the button.
@@ -533,9 +534,12 @@ Either specify options.terrainProvider instead or set options.baseLayerPicker to
     selectionIndicatorContainer.className =
       "cesium-viewer-selectionIndicatorContainer";
     viewerContainer.appendChild(selectionIndicatorContainer);
+    // SDi fork: forward selectionIndicatorStyle so SelectionIndicator can
+    // build the appropriate SVG variant ("brackets" default | "glow" SDi).
     selectionIndicator = new SelectionIndicator(
       selectionIndicatorContainer,
       scene,
+      { style: options.selectionIndicatorStyle },
     );
   }
 
@@ -1812,9 +1816,17 @@ Viewer.prototype._onTick = function (clock) {
   const time = clock.currentTime;
 
   let position;
+  let boundingSphereRadius; // SDi fork: feeds glow bounds-aware scaling.
   let enableCamera = false;
   const selectedEntity = this.selectedEntity;
   const showSelection = defined(selectedEntity) && this._enableInfoOrSelection;
+  // SDi fork: indicator has its own gate so consumers can suppress the visual
+  // per-entity (e.g. DrawTools / ODX entities that render their own custom
+  // highlight) without also hiding the InfoBox for that entity. Default
+  // (undefined) preserves upstream behavior -- indicator shows for every
+  // selectable entity as before.
+  const showSelectionIndicator =
+    showSelection && selectedEntity?.showSelectionIndicator !== false;
 
   if (
     showSelection &&
@@ -1828,6 +1840,7 @@ Viewer.prototype._onTick = function (clock) {
     );
     if (state !== BoundingSphereState.FAILED) {
       position = boundingSphereScratch.center;
+      boundingSphereRadius = boundingSphereScratch.radius; // SDi fork
     } else if (defined(selectedEntity.position)) {
       position = selectedEntity.position.getValue(time, position);
     }
@@ -1842,7 +1855,11 @@ Viewer.prototype._onTick = function (clock) {
       position,
       selectionIndicatorViewModel.position,
     );
-    selectionIndicatorViewModel.showSelection = showSelection && enableCamera;
+    // SDi fork: showSelectionIndicator gates the indicator visual only;
+    // InfoBox below still uses showSelection.
+    selectionIndicatorViewModel.showSelection =
+      showSelectionIndicator && enableCamera;
+    selectionIndicatorViewModel.boundingSphereRadius = boundingSphereRadius; // SDi fork
     selectionIndicatorViewModel.update();
   }
 

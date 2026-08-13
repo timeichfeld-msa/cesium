@@ -1834,6 +1834,8 @@ Material._materialCache.addMaterial(Material.ElevationContourType, {
       spacing: 100.0,
       color: new Color(1.0, 0.0, 0.0, 1.0),
       width: 1.0,
+      slopeFadeStart: Math.PI / 2.0,
+      slopeFadeEnd: Math.PI / 2.0,
     },
     source: ElevationContourMaterial,
   },

@@ -1,5 +1,6 @@
 import {
   Cartesian2,
+  Cartesian3,
   defined,
   DeveloperError,
   EasingFunction,
@@ -8,7 +9,21 @@ import {
 import knockout from "../ThirdParty/knockout.js";
 
 const screenSpacePos = new Cartesian2();
+// SDi fork scratch objects for bounds-aware scaling of the glow variant.
+const scratchEdgeWorld = new Cartesian3();
+const scratchEdgeScreen = new Cartesian2();
 const offScreen = "-1000px";
+
+// SDi fork: glow SVG's base ring radius (see SelectionIndicator.js glow
+// branch, `circle r="55"`). Screen-space radius divided by this yields the
+// bounds-aware scale factor.
+const GLOW_BASE_RADIUS = 55;
+const GLOW_MIN_SCALE = 0.5;
+// Cap the ring at 128 px screen-space radius. Beyond that the SVG's
+// gradient stops start to visibly interpolate and the ring reads as blurry
+// on very large entities / low-zoom camera positions.
+const GLOW_MAX_PIXEL_RADIUS = 128;
+const GLOW_MAX_SCALE = GLOW_MAX_PIXEL_RADIUS / GLOW_BASE_RADIUS;
 
 /**
  * The view model for {@link SelectionIndicator}.
@@ -18,11 +33,17 @@ const offScreen = "-1000px";
  * @param {Scene} scene The scene instance to use for screen-space coordinate conversion.
  * @param {Element} selectionIndicatorElement The element containing all elements that make up the selection indicator.
  * @param {Element} container The DOM element that contains the widget.
+ * @param {object} [options] Optional view model configuration.
+ * @param {("brackets"|"glow")} [options.style="brackets"] SDi fork addition.
+ *   When "glow", <code>update()</code> computes a bounds-aware scale from
+ *   <code>boundingSphereRadius</code> so the ring hugs the selected entity's
+ *   on-screen footprint.
  */
 function SelectionIndicatorViewModel(
   scene,
   selectionIndicatorElement,
   container,
+  options,
 ) {
   //>>includeStart('debug', pragmas.debug);
   if (!defined(scene)) {
@@ -46,6 +67,21 @@ function SelectionIndicatorViewModel(
   this._selectionIndicatorElement = selectionIndicatorElement;
   this._scale = 1;
 
+  // SDi fork: style + bounds-aware scaling state for the glow variant.
+  options = options ?? {};
+  this._style = options.style ?? "brackets";
+  this._boundsScale = 1;
+
+  /**
+   * Gets or sets the world-space bounding sphere radius of the selected
+   * entity. Set each tick by {@link Viewer._onTick} from the same
+   * <code>getBoundingSphere</code> result that drives the InfoBox anchor.
+   * Consumed only when the widget's style is "glow" -- <code>update()</code>
+   * projects an offset by this radius to compute the on-screen ring size.
+   * @type {number|undefined}
+   */
+  this.boundingSphereRadius = undefined;
+
   /**
    * Gets or sets the world position of the object for which to display the selection indicator.
    * @type {Cartesian3}
@@ -63,6 +99,7 @@ function SelectionIndicatorViewModel(
     "_screenPositionX",
     "_screenPositionY",
     "_scale",
+    "_boundsScale",
     "showSelection",
   ]);
 
@@ -80,7 +117,11 @@ function SelectionIndicatorViewModel(
 
   knockout.defineProperty(this, "_transform", {
     get: function () {
-      return `scale(${this._scale})`;
+      // SDi fork: multiply the animation scale by the bounds-aware scale so
+      // glow-style ring sizes to the entity's on-screen footprint AND the
+      // pulse-in animation (animateAppear) still functions on top. For
+      // "brackets" style, _boundsScale stays at 1 and behavior is unchanged.
+      return `scale(${this._scale * this._boundsScale})`;
     },
   });
 
@@ -134,6 +175,42 @@ SelectionIndicatorViewModel.prototype.update = function () {
 
       this._screenPositionX = `${Math.floor(screenPosition.x + 0.25)}px`;
       this._screenPositionY = `${Math.floor(screenPosition.y + 0.25)}px`;
+
+      // SDi fork: bounds-aware scaling for the glow variant.
+      // Project a point offset from `this.position` by boundingSphereRadius
+      // along the camera's right vector; the pixel distance between the
+      // center and that offset gives the on-screen radius of the entity's
+      // bounding sphere. Divide by the glow SVG's authored ring radius to
+      // get a scale factor, clamped so tiny entities are still visible and
+      // very large entities don't blow out the widget's 160px box.
+      if (this._style === "glow" && defined(this.boundingSphereRadius)) {
+        const camera = this._scene.camera;
+        Cartesian3.multiplyByScalar(
+          camera.right,
+          this.boundingSphereRadius,
+          scratchEdgeWorld,
+        );
+        Cartesian3.add(this.position, scratchEdgeWorld, scratchEdgeWorld);
+        const edgeScreen = this.computeScreenSpacePosition(
+          scratchEdgeWorld,
+          scratchEdgeScreen,
+        );
+        if (defined(edgeScreen)) {
+          const dx = edgeScreen.x - (screenPosition.x + halfSize);
+          const dy = edgeScreen.y - (screenPosition.y + halfSize);
+          const pixelRadius = Math.sqrt(dx * dx + dy * dy);
+          const scale = pixelRadius / GLOW_BASE_RADIUS;
+          this._boundsScale = Math.min(
+            Math.max(scale, GLOW_MIN_SCALE),
+            GLOW_MAX_SCALE,
+          );
+        } else {
+          this._boundsScale = 1;
+        }
+      } else if (this._boundsScale !== 1) {
+        // Reset if radius disappears or style is brackets.
+        this._boundsScale = 1;
+      }
     }
   }
 };

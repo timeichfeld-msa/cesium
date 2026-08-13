@@ -1,6 +1,8 @@
 uniform vec4 color;
 uniform float spacing;
 uniform float width;
+uniform float slopeFadeStart;
+uniform float slopeFadeEnd;
 
 czm_material czm_getMaterial(czm_materialInput materialInput)
 {
@@ -17,6 +19,9 @@ czm_material czm_getMaterial(czm_materialInput materialInput)
     // If no derivatives available (IE 10?), use pixel ratio
     float alpha = (distanceToContour < (czm_pixelRatio * width)) ? 1.0 : 0.0;
 #endif
+
+    float slopeDim = 1.0 - smoothstep(slopeFadeStart, slopeFadeEnd, materialInput.slope);
+    alpha *= slopeDim;
 
     vec4 outColor = czm_gammaCorrect(vec4(color.rgb, alpha * color.a));
     material.diffuse = outColor.rgb;

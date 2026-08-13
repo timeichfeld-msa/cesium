@@ -21,3 +21,19 @@
   stroke: #000;
   stroke-width: 1.1px;
 }
+
+/* SDi fork: "glow" style variant.
+   Consumers override --cesium-selection-glow-color to retint. Default is a
+   soft cyan that complements warm-hue custom highlights (DrawTools orange,
+   ODX orange dot). */
+.cesium-selection-wrapper-glow {
+  --cesium-selection-glow-color: rgba(80, 200, 255, 1);
+}
+
+.cesium-selection-wrapper-glow svg {
+  /* Glow variant uses a gradient fill on its circle -- neutralize the
+     brackets-mode svg-level fill/stroke rule above so it doesn't paint
+     green over the gradient. */
+  fill: none;
+  stroke: none;
+}
